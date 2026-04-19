@@ -266,8 +266,16 @@ async def health():
 
 @app.get("/models")
 async def list_models(token: str = Depends(verify_auth)):
-    """Lists files in the models directory and default source URLs."""
-    local_files = os.listdir(MODEL_DIR) if os.path.exists(MODEL_DIR) else []
+    """Lists files in the models directory with sizes and errors."""
+    if not os.path.exists(MODEL_DIR):
+        return {"error": "Models directory not found", "path": os.path.abspath(MODEL_DIR)}
+        
+    local_files = []
+    for f in os.listdir(MODEL_DIR):
+        path = os.path.join(MODEL_DIR, f)
+        size_mb = round(os.path.getsize(path) / (1024 * 1024), 2)
+        local_files.append({"name": f, "size_mb": size_mb})
+
     return {
         "local_models": local_files,
         "active_models": [os.path.basename(p) for p in loaded_models.keys()],
