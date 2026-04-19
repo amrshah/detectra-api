@@ -6,15 +6,17 @@ This document provides technical specifications and implementation examples for 
 1. [Authentication](#authentication)
 2. [Base URL](#base-url)
 3. [System Health](#system-health)
-4. [Detection Endpoints](#detection-endpoints)
+4. [Detection Strategies](#detection-strategies)
+    - [Single Image Detection](#single-image-detection)
+    - [Multi-Image (Batch) Detection](#multi-image-batch-detection)
+    - [Temporal Smoothing](#temporal-smoothing)
 5. [Inference Support & WebP](#inference-support--webp)
 6. [Implementation Examples](#implementation-examples)
-    - [Python](#python-example)
-    - [Dart / Flutter](#dart--flutter-example)
-    - [PHP / Laravel](#php--laravel-example)
-    - [Node.js (Axios)](#nodejs-axios-example)
+    - [Temporal Smoothing (Flutter/Dart)](#temporal-smoothing-flutterdart)
     - [React (JavaScript)](#react-javascript-example)
     - [Angular (TypeScript)](#angular-typescript-example)
+    - [PHP / Laravel](#php--laravel-example)
+    - [Python](#python-example)
     - [cURL](#curl-example)
 7. [Error Handling](#error-handling)
 
@@ -26,27 +28,82 @@ Authorization: Bearer <YOUR_AUTH_KEY>
 ```
 
 ## Base URL
-All requests should be directed to your deployed instance:
 `https://api.yourdomain.com`
 
 ---
 
-## Inference Support & WebP
-The Detectra API utilizes **YOLOv8**, which provides native and efficient support for the **WebP** image format. 
+## Detection Strategies
 
-**Integration Tip:** Developers are strongly encouraged to use **WebP** instead of standard JPEG or PNG. WebP offers significantly higher compression with better quality, reducing latency and bandwidth consumption during batch uploads to the VPS.
+### Single Image Detection
+Use this for applications requiring the lowest possible latency for immediate feedback.
+- **Workflow**: Capture frame -> Send to `/detect-batch` (with 1 image) -> Process result.
+- **Pros**: Fastest response.
+- **Cons**: higher risk of false positives due to lighting or motion blur in 
+
+### Multi-Image (Batch) Detection
+Standard for most surveillance applications. Processes several frames as a single context.
+- **Workflow**: Buffer `n` frames -> Send to `/detect-batch`.
+- **Logic**: The API scans all frames and identifies if a consistent threat is appearing across the sample.
+
+### Temporal Smoothing
+Temporal smoothing is the gold standard for reducing false alerts in AI video analysis. Instead of alerting on a single positive frame, you analyze a sequence of frames over a short window (e.g., 1-2 seconds).
+
+**How it works:**
+1.  Capture 5 to 10 frames at short intervals (e.g., every 200ms).
+2.  Transmit these frames as a single batch to the `/detect-batch` endpoint.
+3.  The API performs an aggregate check: if the system identifies a threat in more than 50% of the frames (majority vote), the `aggregated.alert` field will be marked `true`.
 
 ---
 
-## System Health
-It is recommended to implement a health check in your integration flow to ensure service availability.
-
-### GET /health
-Returns the operational status of the API and its underlying model directory.
+## Inference Support & WebP
+Native support for **YOLOv8** and **WebP**. Developers are strongly urged to use the **WebP** format during temporal smoothing batches to keep the total payload size low and the upload speed high.
 
 ---
 
 ## Implementation Examples
+
+### Temporal Smoothing (Flutter/Dart)
+This example demonstrates how to maintain a rolling buffer of frames and dispatch a batch once the buffer is full.
+
+```dart
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+
+class TemporalDetectionService {
+  final List<String> _frameBuffer = [];
+  final int batchSize = 5;
+
+  // Called every time a frame is captured by the camera
+  Future<void> onFrameCaptured(String imagePath) async {
+    _frameBuffer.add(imagePath);
+
+    if (_frameBuffer.length >= batchSize) {
+      // Buffer is full, dispatch for temporal analysis
+      await _dispatchBatch(List.from(_frameBuffer));
+      _frameBuffer.clear(); // Reset buffer
+    }
+  }
+
+  Future<void> _dispatchBatch(List<String> paths) async {
+    var url = Uri.parse('https://api.yourdomain.com/detect-batch');
+    var request = http.MultipartRequest('POST', url);
+    request.headers['Authorization'] = 'Bearer YOUR_AUTH_KEY';
+
+    for (var path in paths) {
+      request.files.add(await http.MultipartFile.fromPath('images', path));
+    }
+
+    var response = await http.Response.fromStream(await request.send());
+    if (response.statusCode == 200) {
+      var data = jsonDecode(response.body);
+      if (data['aggregated']['alert'] == true) {
+        // Trigger UI Alert: Violence confirmed over temporal window
+        print('CRITICAL: Violence Detected!');
+      }
+    }
+  }
+}
+```
 
 ### React (JavaScript) Example
 ```javascript
@@ -86,69 +143,25 @@ export class DetectionService {
 }
 ```
 
-### Python Example
+### Python Example (Batch Check)
 ```python
 import requests
 
 url = "https://api.yourdomain.com/detect-batch"
 headers = {"Authorization": "Bearer YOUR_AUTH_KEY"}
-files = [("images", open("frame1.webp", "rb"))] # WebP recommended
+files = [("images", open(f"frame_{i}.webp", "rb")) for i in range(5)]
 
 response = requests.post(url, headers=headers, files=files)
-print(response.json())
-```
-
-### Dart / Flutter Example
-```dart
-import 'package:http/http.dart' as http;
-
-Future<void> detectViolence(List<String> imagePaths) async {
-  var url = Uri.parse('https://api.yourdomain.com/detect-batch');
-  var request = http.MultipartRequest('POST', url);
-  request.headers['Authorization'] = 'Bearer YOUR_AUTH_KEY';
-
-  for (var path in imagePaths) {
-    request.files.add(await http.MultipartFile.fromPath('images', path));
-  }
-
-  var response = await http.Response.fromStream(await request.send());
-  print(response.body);
-}
-```
-
-### PHP / Laravel Example
-```php
-use Illuminate\Support\Facades\Http;
-
-$response = Http::withToken('YOUR_AUTH_KEY')
-    ->attach('images', file_get_contents('frame1.webp'), 'frame1.webp')
-    ->post('https://api.yourdomain.com/detect-batch');
-
-return $response->json();
-```
-
-### Node.js (Axios) Example
-```javascript
-const axios = require('axios');
-const FormData = require('form-data');
-const fs = require('fs');
-
-const form = new FormData();
-form.append('images', fs.createReadStream('frame1.webp'));
-
-axios.post('https://api.yourdomain.com/detect-batch', form, {
-    headers: {
-        ...form.getHeaders(),
-        'Authorization': 'Bearer YOUR_AUTH_KEY'
-    }
-}).then(res => console.log(res.data));
+print(f"Batch Alert Status: {response.json()['aggregated']['alert']}")
 ```
 
 ### cURL Example
 ```bash
 curl -X POST "https://api.yourdomain.com/detect-batch" \
      -H "Authorization: Bearer YOUR_AUTH_KEY" \
-     -F "images=@frame1.webp" 
+     -F "images=@frame1.webp" \
+     -F "images=@frame2.webp" \
+     -F "images=@frame3.webp"
 ```
 
 ## Error Handling
@@ -157,5 +170,4 @@ curl -X POST "https://api.yourdomain.com/detect-batch" \
 | 200 | OK | Request succeeded. |
 | 401 | Unauthorized | Verify Bearer token. |
 | 400 | Bad Request | Check image counts or file formats. |
-| 413 | Payload Too Large | Ensure individual files are within size limits. |
 | 500 | Server Error | Internal failure, check server logs. |
