@@ -2,8 +2,8 @@ import os
 import io
 import torch
 import requests
-from typing import List
-from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Header
+from typing import List, Annotated
+from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Header, Form
 from PIL import Image
 from pydantic import BaseModel
 
@@ -155,9 +155,10 @@ async def health():
         }
     }
 
+
 @app.post("/detect-batch")
 async def detect_batch(
-    images: List[UploadFile] = File(...), 
+    images: Annotated[List[UploadFile], File(...)], 
     token: str = Depends(verify_auth)
 ):
     if len(images) > 10:
