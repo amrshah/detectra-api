@@ -47,6 +47,10 @@ def download_model(url: str, overwrite: bool = False):
     if "github.com" in url and "/blob/" in url:
         url = url.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/")
     
+    # Clean up HuggingFace URLs (ensure direct download)
+    if "huggingface.co" in url and "/resolve/" in url and "?download=true" not in url:
+        url = f"{url}?download=true"
+
     # Extract filename from URL
     filename = url.split('/')[-1].split('?')[0]
     if not filename.endswith('.pt'):
@@ -59,7 +63,7 @@ def download_model(url: str, overwrite: bool = False):
 
     print(f"Downloading model from {url} to {local_path}...")
     try:
-        response = requests.get(url, stream=True, allow_redirects=True, timeout=30)
+        response = requests.get(url, stream=True, allow_redirects=True, timeout=60)
         response.raise_for_status()
         with open(local_path, "wb") as f:
             for chunk in response.iter_content(chunk_size=8192):
