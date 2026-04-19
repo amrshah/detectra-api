@@ -10,7 +10,7 @@ services:
     container_name: violence-api
     restart: always
     ports:
-      - "8000:8000"
+      - "4141:4141"
     volumes:
       - ./app/models:/app/models
     environment:
