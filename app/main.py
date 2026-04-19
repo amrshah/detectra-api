@@ -214,6 +214,7 @@ def run_ensemble_inference(img: Image.Image):
     """Runs the image through ALL loaded models and returns aggregated findings."""
     final_weapons = []
     max_violence_prob = 0.0
+    debug_raw = []
     
     for path, model in loaded_models.items():
         fname = os.path.basename(path)
@@ -221,13 +222,15 @@ def run_ensemble_inference(img: Image.Image):
         # 1. Detect using YOLOv8 (Ultralytics)
         if hasattr(model, 'predictor'): 
             try:
-                # We use a lower threshold (0.25) to ensure we don't miss subtle violence
-                results = model(img, conf=0.25) 
+                # Use very low threshold (0.1) to see what the model is catching
+                results = model(img, conf=0.1) 
                 for result in results:
                     for box in result.boxes:
                         conf = float(box.conf[0])
                         cls = int(box.cls[0])
                         label = model.names[cls].lower()
+                        
+                        debug_raw.append({"model": fname, "label": label, "conf": round(conf, 4)})
                         
                         # Handle Violence events specifically
                         if label == "violence":
@@ -277,7 +280,7 @@ def run_ensemble_inference(img: Image.Image):
             except Exception as e:
                 print(f"Error running classifier {fname}: {e}")
                 
-    return final_weapons, max_violence_prob
+    return final_weapons, max_violence_prob, debug_raw
 
 # --- API Endpoints ---
 
@@ -385,7 +388,7 @@ async def detect_batch(
             img = Image.open(io.BytesIO(contents))
             
             # Use the new Ensemble Inference
-            weapons, violence_prob = run_ensemble_inference(img)
+            weapons, violence_prob, raw_debug = run_ensemble_inference(img)
             
             violence_detected = violence_prob > 0.5
             has_gun = any(w["type"] in ["gun", "pistol", "firearm"] for w in weapons)
@@ -403,7 +406,8 @@ async def detect_batch(
                     "shooting": shooting
                 },
                 "alert": alert,
-                "models_used": list(loaded_models.keys())
+                "models_used": list(loaded_models.keys()),
+                "debug_raw_detections": raw_debug
             })
             
         except Exception as e:
