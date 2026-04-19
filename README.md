@@ -176,4 +176,11 @@ For developers building client apps, please refer to the [Integration Guide](int
 - **Max Throughput**: Scalable via Docker workers (Standard: 2-3 concurrent requests per worker).
 
 ## License
-This project is developed for educational purposes only and you're allowed to adapt to your specific need/requirements.
+
+This project is licensed under the MIT License — you are free to use, modify, and distribute this software with proper attribution.
+
+### Disclaimer
+
+This project is intended for educational and research purposes only. It is not designed or certified for production-grade surveillance, safety-critical, or law enforcement use.
+
+The authors are not responsible for any misuse, misinterpretation, or consequences arising from the use of this software.
