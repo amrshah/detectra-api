@@ -7,13 +7,16 @@ This document provides technical specifications and implementation examples for 
 2. [Base URL](#base-url)
 3. [System Health](#system-health)
 4. [Detection Endpoints](#detection-endpoints)
-5. [Implementation Examples](#implementation-examples)
+5. [Inference Support & WebP](#inference-support--webp)
+6. [Implementation Examples](#implementation-examples)
     - [Python](#python-example)
     - [Dart / Flutter](#dart--flutter-example)
     - [PHP / Laravel](#php--laravel-example)
     - [Node.js (Axios)](#nodejs-axios-example)
+    - [React (JavaScript)](#react-javascript-example)
+    - [Angular (TypeScript)](#angular-typescript-example)
     - [cURL](#curl-example)
-6. [Error Handling](#error-handling)
+7. [Error Handling](#error-handling)
 
 ## Authentication
 The API utilizes Bearer Token authentication. All requests to detection and management endpoints must include the following header:
@@ -28,43 +31,60 @@ All requests should be directed to your deployed instance:
 
 ---
 
+## Inference Support & WebP
+The Detectra API utilizes **YOLOv8**, which provides native and efficient support for the **WebP** image format. 
+
+**Integration Tip:** Developers are strongly encouraged to use **WebP** instead of standard JPEG or PNG. WebP offers significantly higher compression with better quality, reducing latency and bandwidth consumption during batch uploads to the VPS.
+
+---
+
 ## System Health
 It is recommended to implement a health check in your integration flow to ensure service availability.
 
 ### GET /health
 Returns the operational status of the API and its underlying model directory.
 
-**Response Structure:**
-```json
-{
-  "status": "healthy",
-  "mock_mode": false,
-  "models_status": {
-    "directory_exists": true,
-    "files": ["model_weights.pt"]
-  }
-}
-```
-
----
-
-## Detection Endpoints
-
-### POST /detect-batch
-Processes a batch of images to identify weapons or violent events. The API employs an ensemble logic to aggregate results from multiple active models.
-
-**Request Format:** `multipart/form-data`
-**Parameter:** `images` (Array of File objects, Limit: 10)
-
-**Response Fields:**
-- **filename**: Name of the processed image.
-- **weapons**: Array of detected objects (rifles, pistols, knives, etc.).
-- **violence**: Object containing detection status and confidence score.
-- **alert**: Boolean indicating if the frame reached the threat threshold.
-
 ---
 
 ## Implementation Examples
+
+### React (JavaScript) Example
+```javascript
+import axios from 'axios';
+
+const detectImages = async (files) => {
+  const formData = new FormData();
+  files.forEach(file => formData.append('images', file));
+
+  const response = await axios.post('https://api.yourdomain.com/detect-batch', formData, {
+    headers: {
+      'Authorization': 'Bearer YOUR_AUTH_KEY',
+      'Content-Type': 'multipart/form-data'
+    }
+  });
+  return response.data;
+};
+```
+
+### Angular (TypeScript) Example
+```typescript
+import { HttpClient, HttpHeaders } from '@angular/common/http';
+
+export class DetectionService {
+  constructor(private http: HttpClient) {}
+
+  detectBatch(files: File[]) {
+    const formData = new FormData();
+    files.forEach(file => formData.append('images', file));
+
+    const headers = new HttpHeaders({
+      'Authorization': 'Bearer YOUR_AUTH_KEY'
+    });
+
+    return this.http.post('https://api.yourdomain.com/detect-batch', formData, { headers });
+  }
+}
+```
 
 ### Python Example
 ```python
@@ -72,7 +92,7 @@ import requests
 
 url = "https://api.yourdomain.com/detect-batch"
 headers = {"Authorization": "Bearer YOUR_AUTH_KEY"}
-files = [("images", open("frame1.jpg", "rb"))]
+files = [("images", open("frame1.webp", "rb"))] # WebP recommended
 
 response = requests.post(url, headers=headers, files=files)
 print(response.json())
@@ -101,7 +121,7 @@ Future<void> detectViolence(List<String> imagePaths) async {
 use Illuminate\Support\Facades\Http;
 
 $response = Http::withToken('YOUR_AUTH_KEY')
-    ->attach('images', file_get_contents('frame1.jpg'), 'frame1.jpg')
+    ->attach('images', file_get_contents('frame1.webp'), 'frame1.webp')
     ->post('https://api.yourdomain.com/detect-batch');
 
 return $response->json();
@@ -114,7 +134,7 @@ const FormData = require('form-data');
 const fs = require('fs');
 
 const form = new FormData();
-form.append('images', fs.createReadStream('frame1.jpg'));
+form.append('images', fs.createReadStream('frame1.webp'));
 
 axios.post('https://api.yourdomain.com/detect-batch', form, {
     headers: {
@@ -128,8 +148,7 @@ axios.post('https://api.yourdomain.com/detect-batch', form, {
 ```bash
 curl -X POST "https://api.yourdomain.com/detect-batch" \
      -H "Authorization: Bearer YOUR_AUTH_KEY" \
-     -F "images=@frame1.jpg" \
-     -F "images=@frame2.jpg"
+     -F "images=@frame1.webp" 
 ```
 
 ## Error Handling
