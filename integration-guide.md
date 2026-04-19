@@ -4,7 +4,7 @@ This guide provides technical documentation for developers integrating the Detec
 
 ## Base URL
 All API requests should be made to the following base URL:
-`https://detectra-api.alamiaai.com`
+`https://api.yourdomain.com`
 
 ## Authentication
 The API uses Bearer Token authentication. All requests to detection endpoints must include the following header:
@@ -96,7 +96,7 @@ The API utilizes standard HTTP status codes:
 ```python
 import requests
 
-url = "https://detectra-api.alamiaai.com/detect-batch"
+url = "https://api.yourdomain.com/detect-batch"
 headers = {"Authorization": "Bearer YOUR_AUTH_KEY"}
 files = [
     ("images", open("frame1.jpg", "rb")),
@@ -116,7 +116,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 
 Future<void> detectViolence(List<String> imagePaths) async {
-  var url = Uri.parse('https://detectra-api.alamiaai.com/detect-batch');
+  var url = Uri.parse('https://api.yourdomain.com/detect-batch');
   var request = http.MultipartRequest('POST', url);
   
   // Add Headers
