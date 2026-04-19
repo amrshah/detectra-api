@@ -56,7 +56,7 @@ Key variables:
 ```bash
 cd app
 pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
+uvicorn main:app --reload --port 4141
 ```
 
 ---
@@ -81,9 +81,9 @@ To expose your API securely without opening ports:
 1. Initialize a tunnel: `cloudflared tunnel create detectra-api`
 2. Create a configuration mapping your domain to the container:
    ```yaml
-   ingress:
-     - hostname: api.yourdomain.com
-       service: http://violence-api:8000
+    ingress:
+      - hostname: api.yourdomain.com
+        service: http://violence-api:4141
    ```
 3. Route the traffic through the Zero Trust dashboard.
 
@@ -91,15 +91,27 @@ To expose your API securely without opening ports:
 
 ## API Documentation
 
-### Simple Detection
-`POST /detect`
-- **Auth**: `X-API-Key` header or `auth_key` parameter.
-- **Body**: `multipart/form-data` with `image` file.
+The API includes built-in interactive documentation:
+- **Swagger UI**: [https://api.yourdomain.com/docs](https://api.yourdomain.com/docs) (Interactive testing)
+- **ReDoc**: [https://api.yourdomain.com/redoc](https://api.yourdomain.com/redoc) (Detailed documentation)
 
-### Batch Detection (for CCTV smoothing)
+### Authentication
+The API uses **Bearer Token** authentication. Include the following header in your requests:
+`Authorization: Bearer <YOUR_AUTH_KEY>`
+
+### Endpoints
+
+#### Health Check
+`GET /health`
+- **Description**: Returns the operational status of the service and models.
+- **Auth**: Public
+
+#### Batch Detection
 `POST /detect-batch`
+- **Description**: Analyzes a batch of images for violence and weapons. Recommended for CCTV temporal smoothing.
+- **Auth**: Bearer Token
 - **Body**: `multipart/form-data` with multiple `images` files.
-- **Logic**: Returns aggregated results using majority voting.
+- **Logic**: Returns aggregated results using majority voting. Instructed to trigger alerts if a majority of frames are positive.
 
 ---
 
