@@ -19,4 +19,4 @@ COPY app/ .
 
 # We use 1 worker for ML stability, but with A1 Flex (4-8 OCPU), 
 # we could potentially use more if we want to increase throughput later.
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "4141", "--workers", "1"]
