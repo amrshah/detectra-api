@@ -22,11 +22,45 @@ app = FastAPI(
 AUTH_KEY = os.getenv("AUTH_KEY", "default-secret-key")
 MOCK_MODE = os.getenv("MOCK_MODE", "false").lower() == "true"
 MODEL_DIR = "models"
-YOLO_MODEL_PATH = os.path.join(MODEL_DIR, "yolo.pt")
-VIOLENCE_MODEL_PATH = os.path.join(MODEL_DIR, "violence.pt")
+# New: Environment variable for semicolon-separated download links
+CUSTOM_MODEL_URLS = os.getenv("MODEL_DOWNLOAD_URLS", "")
 
-# URLs for weight downloads
-YOLO_URL = "https://github.com/ultralytics/yolov5/releases/download/v6.0/yolov5n.pt"
+# Default URLs provided by user
+DEFAULT_MODEL_URLS = [
+    "https://huggingface.co/Musawer14/fight_detection_yolov8/resolve/main/Yolo_nano_weights.pt?download=true",
+    "https://huggingface.co/Musawer14/fight_detection_yolov8/resolve/main/yolo_small_weights.pt?download=true",
+    "https://github.com/Rohit-raj-t/Violence-detection/blob/main/yolov8n.pt"
+]
+
+# --- Helpers ---
+def download_model(url: str, overwrite: bool = False):
+    """Downloads a model from a URL if missing or if overwrite is True."""
+    # Clean up GitHub URLs for raw download
+    if "github.com" in url and "/blob/" in url:
+        url = url.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/")
+    
+    # Extract filename from URL
+    filename = url.split('/')[-1].split('?')[0]
+    if not filename.endswith('.pt'):
+        filename = f"{filename}.pt" # Fallback extension
+        
+    local_path = os.path.join(MODEL_DIR, filename)
+    
+    if os.path.exists(local_path) and not overwrite:
+        return local_path
+
+    print(f"Downloading model from {url} to {local_path}...")
+    try:
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
+        with open(local_path, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+        print(f"Successfully downloaded {filename}.")
+        return local_path
+    except Exception as e:
+        print(f"Error downloading {url}: {e}")
+        return None
 
 # --- Startup Logic ---
 @app.on_event("startup")
@@ -38,39 +72,21 @@ async def startup_event():
     if not os.path.exists(MODEL_DIR):
         os.makedirs(MODEL_DIR)
     
-    # Download YOLO if missing
-    if not os.path.exists(YOLO_MODEL_PATH):
-        print(f"Downloading YOLOv5n weights from {YOLO_URL}...")
-        try:
-            response = requests.get(YOLO_URL)
-            with open(YOLO_MODEL_PATH, "wb") as f:
-                f.write(response.content)
-            print("YOLO weights downloaded successfully.")
-        except Exception as e:
-            print(f"Failed to download YOLO weights: {e}")
+    # 1. Download Default Models (if missing)
+    for url in DEFAULT_MODEL_URLS:
+        download_model(url, overwrite=False)
 
-    # Load Models
-    global yolo_model, violence_model
-    try:
-        print("Loading YOLOv5 model...")
-        yolo_model = torch.hub.load('ultralytics/yolov5', 'custom', path=YOLO_MODEL_PATH, force_reload=False)
-        print("YOLOv5 model loaded.")
-    except Exception as e:
-        print(f"Error loading YOLOv5 model: {e}")
-        yolo_model = None
+    # 2. Download Custom Models from ENV (Always Overwrite as requested)
+    if CUSTOM_MODEL_URLS:
+        url_list = [u.strip() for u in CUSTOM_MODEL_URLS.split(';') if u.strip()]
+        for url in url_list:
+            download_model(url, overwrite=True)
 
-    try:
-        if os.path.exists(VIOLENCE_MODEL_PATH):
-            print("Loading Violence model...")
-            violence_model = torch.jit.load(VIOLENCE_MODEL_PATH)
-            violence_model.eval()
-            print("Violence model loaded.")
-        else:
-            print(f"WARNING: Violence model not found at {VIOLENCE_MODEL_PATH}.")
-            violence_model = None
-    except Exception as e:
-        print(f"Error loading Violence model: {e}")
-        violence_model = None
+    print("Startup model check complete.")
+
+# Global model placeholders
+yolo_model = None
+violence_model = None
 
 # --- Helpers ---
 def verify_auth(auth: HTTPAuthorizationCredentials = Depends(security)):
