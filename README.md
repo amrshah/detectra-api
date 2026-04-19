@@ -4,13 +4,13 @@ Detectra API is a high-performance, lightweight backend service designed for rea
 
 ## Table of Contents
 1. [Key Features](#key-features)
-2. [Tech Stack](#tech-stack)
-3. [System Requirements](#system-requirements)
-4. [Limitations](#limitations)
-5. [Setup & Installation](#setup--installation)
-6. [Deployment Instructions](#deployment-instructions)
-7. [API Documentation](#api-documentation)
-8. [Integration Guide & WebP](#integration-guide--webp)
+2. [Stateless Architecture](#stateless-architecture)
+3. [Tech Stack](#tech-stack)
+4. [System Requirements](#system-requirements)
+5. [Limitations](#limitations)
+6. [Setup & Installation](#setup--installation)
+7. [Deployment Instructions](#deployment-instructions)
+8. [API Documentation](#api-documentation)
 9. [Performance](#performance)
 10. [License](#license)
 
@@ -21,7 +21,36 @@ Detectra API is a high-performance, lightweight backend service designed for rea
 - **Heuristic Activity Inference**: Violent activities are inferred using multi-frame analysis and rule-based aggregation over detection outputs.
 - **WebP Native Support**: Fully supports WebP format, allowing for high-quality analysis with up to 80% lower bandwidth consumption.
 - **Batch Processing**: Support for temporal smoothing through multi-frame analysis.
-- **Resource Optimized**: Specifically tuned for CPU-only inference on ARM/x86 (including AMD Ryzen) architectures.
+
+---
+
+## Stateless Architecture
+
+The following diagram illustrates the high-level flow from frame capture to event inference:
+
+```mermaid
+graph TD
+    A[Client Layer: Flutter App / CCTV Feed] --> B[Frame Extraction: 1–3 FPS Sampling]
+    B --> C[Detectra API: FastAPI Backend]
+    
+    subgraph "Processing Tier"
+        C --> D[YOLOv8 Model: Weapon Detection]
+        C --> E[Batch Processor: Temporal Aggregation]
+        D --> F[Detection Results]
+        E --> F
+    end
+    
+    F --> G[Event Inference Engine: Rule-Based Logic]
+    G --> H[API JSON Response]
+    H --> I[Client Action Layer: Alerts / Notifications]
+
+    style C fill:#f9f,stroke:#333,stroke-width:2px
+    style G fill:#bbf,stroke:#333,stroke-width:2px
+```
+
+> **Note**: The entire backend infrastructure operates as a stateless service within a Docker environment (Portainer) on a VPS.
+
+---
 
 ## Tech Stack
 
@@ -32,27 +61,18 @@ Detectra API is a high-performance, lightweight backend service designed for rea
 ## System Requirements
 
 ### Operational Modes
-- **Lightweight Mode (2GB RAM Required)**: Stub inference for logic testing and API flow validation without loading heavy AI models.
+- **Lightweight Mode (2GB RAM Required)**: Stub inference for logic testing and API flow validation.
 - **Inference Mode (4GB+ RAM Required)**: Full ensemble loading with active hardware-bound detection.
-
-### Hardware
-- **CPU**: ARM64 (Oracle A1 Flex) or x86 (Intel/AMD) with 2+ cores.
-- **Environment**: Docker 20.10+
 
 ## Limitations
 
 - **Temporal Context**: Utilizes frame-based inference. While temporal smoothing is applied over batches, it lacks native 3D/video-tensor understanding.
 - **Contextual Nuance**: Limited accuracy for complex behavioral activities (e.g., distinguishing between play-fights and real violence).
 - **Environmental Dependency**: Highly dependent on camera visibility, angle, and lighting conditions.
-- **Deployment Scale**: Optimized for high-efficiency on CPU; extremely high-scale concurrent deployments should consider GPU-accelerated clusters.
 
 ---
 
 ## API Documentation
-
-### Authentication
-The API uses **Bearer Token** authentication. Include the following header in your requests:
-`Authorization: Bearer <YOUR_AUTH_KEY>`
 
 ### Response Specification
 
