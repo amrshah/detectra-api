@@ -292,9 +292,17 @@ async def list_models(token: str = Depends(verify_auth)):
         size_mb = round(os.path.getsize(path) / (1024 * 1024), 2)
         local_files.append({"name": f, "size_mb": size_mb})
 
+    active_list = []
+    for p, model in loaded_models.items():
+        name = os.path.basename(p)
+        labels = []
+        if hasattr(model, 'names'):
+            labels = list(model.names.values()) if isinstance(model.names, dict) else model.names
+        active_list.append({"name": name, "labels": labels})
+
     return {
         "local_models": local_files,
-        "active_models": [os.path.basename(p) for p in loaded_models.keys()],
+        "active_models": active_list,
         "errors": {os.path.basename(p): err for p, err in model_errors.items()},
         "default_sources": DEFAULT_MODEL_URLS,
         "custom_sources": CUSTOM_MODEL_URLS.split(';') if CUSTOM_MODEL_URLS else []
