@@ -2,6 +2,20 @@
 
 Detectra API is a high-performance, lightweight backend service designed for real-time violence detection. Built specifically for resource-constrained environments (like Oracle A1Flex VPS), it provides robust endpoints for analyzing image feeds from CCTV cameras or mobile applications to identify weapons and violent activities.
 
+## Table of Contents
+1. [Key Features](#key-features)
+2. [Tech Stack](#tech-stack)
+3. [Project Structure](#project-structure)
+4. [Setup & Installation](#setup--installation)
+5. [Deployment Instructions](#deployment-instructions)
+6. [API Documentation](#api-documentation)
+    - [Authentication](#authentication)
+    - [Core Endpoints](#core-endpoints)
+    - [Management Endpoints](#management-endpoints)
+7. [Integration Guide](#integration-guide)
+8. [Performance](#performance-on-oracle-vps-a1-flex)
+9. [License](#license)
+
 ## Key Features
 
 - **Single Frame Detection**: High-speed inference for individual images.
@@ -16,7 +30,7 @@ Detectra API is a high-performance, lightweight backend service designed for rea
 ## Tech Stack
 
 - **Framework**: [FastAPI](https://fastapi.tiangolo.com/)
-- **Machine Learning**: [PyTorch](https://pytorch.org/), [MobileNetV2](https://pytorch.org/hub/pytorch_vision_mobilenet_v2/), [YOLOv5](https://github.com/ultralytics/yolov5)
+- **Machine Learning**: [PyTorch](https://pytorch.org/), [Ultralytics (YOLOv8)](https://github.com/ultralytics/ultralytics)
 - **Deployment**: Docker, Docker Compose, Portainer
 - **Networking**: Cloudflare Tunnels (Zero Trust)
 
@@ -26,13 +40,14 @@ Detectra API is a high-performance, lightweight backend service designed for rea
 detectra-api/
 ├── app/
 │   ├── main.py          # FastAPI application logic
-│   ├── models/          # Pre-trained model checkpoints (.pt / .onnx)
+│   ├── models/          # Pre-trained model checkpoints (.pt)
 │   └── requirements.txt  # Python dependencies
 ├── planning/            # Architectural and design documentation
 ├── .env                 # Environment variables (Internal)
 ├── .env.example         # Template for environment variables
 ├── Dockerfile           # Multi-stage production build
-└── docker-compose.yml   # Stack orchestration
+├── docker-compose.yml   # Stack orchestration
+└── integration-guide.md # Developer documentation
 ```
 
 ---
@@ -51,6 +66,7 @@ cp .env.example .env
 Key variables:
 - `AUTH_KEY`: Your secret API key for authorization.
 - `MOCK_MODE`: Set to `true` to test API flow without loading heavy models.
+- `DEBUG_MODE`: Set to `true` to receive detailed detection metadata in responses.
 
 ### 3. Local Development
 ```bash
@@ -76,42 +92,47 @@ docker-compose up -d --build
 4. Add the environment variables from `.env` in the "Environment variables" section.
 5. Click **Deploy the stack**.
 
-### Cloudflare Tunnel Setup
-To expose your API securely without opening ports:
-1. Initialize a tunnel: `cloudflared tunnel create detectra-api`
-2. Create a configuration mapping your domain to the container:
-   ```yaml
-    ingress:
-      - hostname: api.yourdomain.com
-        service: http://violence-api:4141
-   ```
-3. Route the traffic through the Zero Trust dashboard.
-
 ---
 
 ## API Documentation
 
 The API includes built-in interactive documentation:
-- **Swagger UI**: [https://api.yourdomain.com/docs](https://api.yourdomain.com/docs) (Interactive testing)
-- **ReDoc**: [https://api.yourdomain.com/redoc](https://api.yourdomain.com/redoc) (Detailed documentation)
+- **Swagger UI**: [https://api.yourdomain.com/docs](https://api.yourdomain.com/docs)
+- **ReDoc**: [https://api.yourdomain.com/redoc](https://api.yourdomain.com/redoc)
 
 ### Authentication
 The API uses **Bearer Token** authentication. Include the following header in your requests:
 `Authorization: Bearer <YOUR_AUTH_KEY>`
 
-### Endpoints
+### Core Endpoints
 
-#### Health Check
-`GET /health`
-- **Description**: Returns the operational status of the service and models.
+#### GET /health
+- **Description**: Returns the operational status of the service, active models, and mock mode status.
 - **Auth**: Public
 
-#### Batch Detection
-`POST /detect-batch`
-- **Description**: Analyzes a batch of images for violence and weapons. Recommended for CCTV temporal smoothing.
+#### POST /detect-batch
+- **Description**: Analyzes a batch of images for violence and weapons. 
 - **Auth**: Bearer Token
-- **Body**: `multipart/form-data` with multiple `images` files.
-- **Logic**: Returns aggregated results using majority voting. Instructed to trigger alerts if a majority of frames are positive.
+- **Body**: `multipart/form-data` with `images` files.
+
+### Management Endpoints
+
+#### GET /models
+- **Description**: Lists all local model files, their sizes, active status, and any loading errors.
+- **Auth**: Bearer Token
+
+#### POST /add-model
+- **Description**: Downloads and live-loads a new model via URL. Enforces a 500MB size limit and a 6-model quota.
+- **Auth**: Bearer Token
+
+#### POST /download-default-models
+- **Description**: Resets/redownloads all baseline AI models provided during initial setup.
+- **Auth**: Bearer Token
+
+---
+
+## Integration Guide
+For comprehensive developer documentation including code samples in Python, Dart/Flutter, PHP/Laravel, and Node.js, please refer to the [Integration Guide](integration-guide.md).
 
 ---
 
@@ -121,4 +142,4 @@ The API uses **Bearer Token** authentication. Include the following header in yo
 - **Max Throughput**: ~2-3 concurrent requests (optimized for 1 worker)
 
 ## License
-This project is developed for educational purposes only.
+This project is developed for educational purposes only and you're allowed to adapt to your specific need/requirements.
