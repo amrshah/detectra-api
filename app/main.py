@@ -221,14 +221,26 @@ def run_ensemble_inference(img: Image.Image):
         # 1. Detect using YOLOv8 (Ultralytics)
         if hasattr(model, 'predictor'): 
             try:
-                results = model(img)
+                # We use a lower threshold (0.25) to ensure we don't miss subtle violence
+                results = model(img, conf=0.25) 
                 for result in results:
                     for box in result.boxes:
                         conf = float(box.conf[0])
                         cls = int(box.cls[0])
-                        label = model.names[cls]
+                        label = model.names[cls].lower()
                         
-                        if label in ["knife", "scissors", "gun", "pistol", "firearm", "weapon", "punch", "kick"]:
+                        # Handle Violence events specifically
+                        if label == "violence":
+                            max_violence_prob = max(max_violence_prob, conf)
+                            final_weapons.append({
+                                "type": "violence_event",
+                                "confidence": round(conf, 4),
+                                "box": [round(float(x), 2) for x in box.xyxy[0].tolist()],
+                                "source_model": fname
+                            })
+                            
+                        # Handle Weapons
+                        elif label in ["knife", "scissors", "gun", "pistol", "firearm", "weapon", "handgun", "rifle"]:
                             final_weapons.append({
                                 "type": label,
                                 "confidence": round(conf, 4),
