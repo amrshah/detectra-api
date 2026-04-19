@@ -1,7 +1,11 @@
-version: "3.9"
+# Docker Compose for Violence Detection API
+# Optimized for Portainer Stack Deployment
 
 services:
   violence-api:
+    # Note: 'build: .' only works if deploying via Git Repository in Portainer.
+    # If using the Web Editor, you must build the image manually first 
+    # or use a pre-built image.
     build: .
     container_name: violence-api
     restart: always
@@ -10,9 +14,9 @@ services:
     volumes:
       - ./app/models:/app/models
     environment:
-      - AUTH_KEY=${AUTH_KEY:-your-secret-key}
-      - MOCK_MODE=${MOCK_MODE:-false}
+      AUTH_KEY: "${AUTH_KEY:-your-secret-key}"
+      MOCK_MODE: "${MOCK_MODE:-false}"
     deploy:
       resources:
         limits:
-          memory: 4G # Increased since VPS has 24GB
+          memory: 4G
