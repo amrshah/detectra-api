@@ -62,6 +62,52 @@ def download_model(url: str, overwrite: bool = False):
         print(f"Error downloading {url}: {e}")
         return None
 
+class AddModelRequest(BaseModel):
+    url: str
+    overwrite: bool = True
+
+# Global model management
+loaded_models = {} # path -> model_object
+model_info = {}   # path -> metadata (type, name, etc)
+
+def load_all_models():
+    """Scans the models directory and loads all .pt files into memory."""
+    global loaded_models
+    if MOCK_MODE:
+        return
+    
+    if not os.path.exists(MODEL_DIR):
+        return
+
+    current_files = [f for f in os.listdir(MODEL_DIR) if f.endswith('.pt')]
+    print(f"Syncing {len(current_files)} models...")
+    
+    # Remove models no longer on disk
+    for path in list(loaded_models.keys()):
+        if os.path.basename(path) not in current_files:
+            del loaded_models[path]
+
+    # Load new models
+    for file in current_files:
+        path = os.path.join(MODEL_DIR, file)
+        if path not in loaded_models:
+            print(f"Loading {file}...")
+            try:
+                # Try loading as YOLOv5 first (most common in this app)
+                # Note: We use torch.hub for YOLOv5 compatibility
+                model = torch.hub.load('ultralytics/yolov5', 'custom', path=path, force_reload=False)
+                loaded_models[path] = model
+                print(f"Successfully loaded {file} as YOLO model.")
+            except Exception as e:
+                try:
+                    # Fallback to JIT for classification models (like your violence.pt)
+                    model = torch.jit.load(path)
+                    model.eval()
+                    loaded_models[path] = model
+                    print(f"Successfully loaded {file} as TorchScript model.")
+                except Exception as e2:
+                    print(f"Failed to load {file}: {e2}")
+
 # --- Startup Logic ---
 @app.on_event("startup")
 async def startup_event():
@@ -76,13 +122,15 @@ async def startup_event():
     for url in DEFAULT_MODEL_URLS:
         download_model(url, overwrite=False)
 
-    # 2. Download Custom Models from ENV (Always Overwrite as requested)
+    # 2. Download Custom Models from ENV
     if CUSTOM_MODEL_URLS:
         url_list = [u.strip() for u in CUSTOM_MODEL_URLS.split(';') if u.strip()]
         for url in url_list:
             download_model(url, overwrite=True)
 
-    print("Startup model check complete.")
+    # 3. Load all models into memory
+    load_all_models()
+    print("Startup model check and load complete.")
 
 # Global model placeholders
 yolo_model = None
@@ -134,29 +182,44 @@ def preprocess_for_violence(img: Image.Image):
     t = t.view(224, 224, 3).permute(2, 0, 1) / 255.0
     return t.unsqueeze(0)
 
-def detect_weapons(img: Image.Image):
-    if yolo_model is None:
-        return []
-    results = yolo_model(img)
-    detections = []
-    for *box, conf, cls in results.xyxy[0]:
-        label = yolo_model.names[int(cls)]
-        if label in ["knife", "scissors", "gun", "pistol", "firearm"]:
-            detections.append({
-                "type": label,
-                "confidence": round(float(conf), 4),
-                "box": [round(float(x), 2) for x in box]
-            })
-    return detections
-
-def classify_violence(img: Image.Image):
-    if violence_model is None:
-        return 0.0
-    tensor = preprocess_for_violence(img)
-    with torch.no_grad():
-        out = violence_model(tensor)
-        prob = torch.sigmoid(out).item()
-    return prob
+def run_ensemble_inference(img: Image.Image):
+    """Runs the image through ALL loaded models and returns aggregated findings."""
+    final_weapons = []
+    max_violence_prob = 0.0
+    
+    for path, model in loaded_models.items():
+        fname = os.path.basename(path)
+        # 1. Detect Weapons if it's a YOLO-style model
+        if hasattr(model, 'names'): 
+            try:
+                results = model(img)
+                for *box, conf, cls in results.xyxy[0]:
+                    label = model.names[int(cls)]
+                    # Common labels for violence/weapon detection
+                    if label in ["knife", "scissors", "gun", "pistol", "firearm", "weapon", "punch", "kick"]:
+                        final_weapons.append({
+                            "type": label,
+                            "confidence": round(float(conf), 4),
+                            "box": [round(float(x), 2) for x in box],
+                            "source_model": fname
+                        })
+            except Exception as e:
+                print(f"Error running detector {fname}: {e}")
+        
+        # 2. Detect Violence if it's a classification-style model
+        else:
+            try:
+                tensor = preprocess_for_violence(img)
+                with torch.no_grad():
+                    out = model(tensor)
+                    # Support both [1] and [1, 1] output shapes
+                    prob = torch.sigmoid(out).min().item() 
+                    max_violence_prob = max(max_violence_prob, prob)
+            except Exception as e:
+                # Some models might fail if they expect different input shapes
+                print(f"Error running classifier {fname}: {e}")
+                
+    return final_weapons, max_violence_prob
 
 # --- API Endpoints ---
 
@@ -188,7 +251,22 @@ async def trigger_download(token: str = Depends(verify_auth)):
     for url in DEFAULT_MODEL_URLS:
         path = download_model(url, overwrite=True)
         results.append({"url": url, "success": path is not None})
+    load_all_models() # Sync memory
     return {"status": "completed", "results": results}
+
+@app.post("/add-model")
+async def add_model(request: AddModelRequest, token: str = Depends(verify_auth)):
+    """Downloads a new model from a URL and loads it into the ensemble."""
+    path = download_model(request.url, overwrite=request.overwrite)
+    if not path:
+        raise HTTPException(status_code=400, detail="Failed to download model")
+    
+    load_all_models() # Sync memory
+    return {
+        "status": "success",
+        "model": os.path.basename(path),
+        "total_active_models": len(loaded_models)
+    }
 
 
 @app.post("/detect-batch")
@@ -208,18 +286,14 @@ async def detect_batch(
 
         try:
             contents = await file.read()
-            if len(contents) > 5 * 1024 * 1024:
-                raise HTTPException(status_code=400, detail=f"File {file.filename} is too large (> 5MB)")
-
             img = Image.open(io.BytesIO(contents))
             
-            weapons = detect_weapons(img)
-            violence_prob = classify_violence(img)
-            violence_detected = violence_prob > 0.5
+            # Use the new Ensemble Inference
+            weapons, violence_prob = run_ensemble_inference(img)
             
+            violence_detected = violence_prob > 0.5
             has_gun = any(w["type"] in ["gun", "pistol", "firearm"] for w in weapons)
             shooting = has_gun and violence_prob > 0.6
-            
             alert = shooting or violence_detected or len(weapons) > 0
             
             batch_results.append({
@@ -232,7 +306,8 @@ async def detect_batch(
                 "critical_event": {
                     "shooting": shooting
                 },
-                "alert": alert
+                "alert": alert,
+                "models_used": list(loaded_models.keys())
             })
             
         except Exception as e:
