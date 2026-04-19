@@ -48,6 +48,67 @@ graph TD
     style G fill:#bbf,stroke:#333,stroke-width:2px
 ```
 
+```
++-------------------------+
+|     Client Layer        |
+|-------------------------|
+| Flutter App / CCTV Feed |
++-----------+-------------+
+            |
+            v
++-------------------------+
+|   Frame Extraction      |
+|-------------------------|
+| 1–3 FPS Sampling        |
++-----------+-------------+
+            |
+            v
++-------------------------+
+|   Detectra API          |
+|   (FastAPI Backend)     |
++-----------+-------------+
+            |
+   +--------+--------+
+   |                 |
+   v                 v
++----------------+  +---------------------------+
+| YOLOv8 Model   |  | Batch Processor           |
+|----------------|  |---------------------------|
+| Weapon Detection| | Temporal Aggregation      |
++--------+-------+  +-------------+-------------+
+         |                         |
+         +-----------+-------------+
+                     v
+        +-----------------------------+
+        |   Detection Results         |
+        |-----------------------------|
+        | Weapons + Confidence Scores |
+        +-------------+---------------+
+                      |
+                      v
+        +-----------------------------+
+        |  Event Inference Engine     |
+        |-----------------------------|
+        | Rule-Based Logic            |
+        | (e.g., Shooting Detection) |
+        +-------------+---------------+
+                      |
+                      v
+        +-----------------------------+
+        |   API JSON Response         |
+        +-------------+---------------+
+                      |
+                      v
+        +-----------------------------+
+        | Client Action Layer         |
+        |-----------------------------|
+        | Alerts / Notifications      |
+        +-----------------------------+
+
+
+      [ Backend runs inside Docker (Portainer) on VPS ]
+```
+
 > **Note**: The entire backend infrastructure operates as a stateless service within a Docker environment (Portainer) on a VPS.
 
 ---
