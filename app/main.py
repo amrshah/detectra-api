@@ -75,51 +75,67 @@ class AddModelRequest(BaseModel):
 
 # Global model management
 loaded_models = {} # path -> model_object
-model_info = {}   # path -> metadata (type, name, etc)
+model_errors = {}  # path -> error_string
 
 def load_all_models():
     """Scans the models directory and loads all .pt files into memory."""
-    global loaded_models
+    global loaded_models, model_errors
     if MOCK_MODE:
         return
     
     if not os.path.exists(MODEL_DIR):
-        return
+        os.makedirs(MODEL_DIR)
 
     current_files = [f for f in os.listdir(MODEL_DIR) if f.endswith('.pt')]
-    print(f"Syncing {len(current_files)} models...")
     
     # Remove models no longer on disk
     for path in list(loaded_models.keys()):
         if os.path.basename(path) not in current_files:
             del loaded_models[path]
+            model_errors.pop(path, None)
 
-    # Load new models with size check
+    # Load models
     for file in current_files:
         path = os.path.join(MODEL_DIR, file)
         
         # 500MB Size Check
         if os.path.getsize(path) > MAX_MODEL_SIZE:
-            print(f"Skipping {file}: Exceeds 500MB limit.")
+            model_errors[path] = "File exceeds 500MB limit"
             continue
 
         if path not in loaded_models:
             print(f"Loading {file}...")
             try:
-                # Try loading as YOLOv5 first (most common in this app)
-                # Note: We use torch.hub for YOLOv5 compatibility
-                model = torch.hub.load('ultralytics/yolov5', 'custom', path=path, force_reload=False)
+                # Attempt 1: Standard Torch Load (General)
+                # We try Map Location to CPU for stability on VPS
+                model = torch.load(path, map_location=torch.device('cpu'))
+                # If it's a dict (common in YOLOv8/v5 saved weights), it's not the model itself
+                if isinstance(model, dict) and 'model' in model:
+                    model = model['model']
+                
+                model.eval()
                 loaded_models[path] = model
-                print(f"Successfully loaded {file} as YOLO model.")
-            except Exception as e:
+                model_errors.pop(path, None)
+                print(f"Successfully loaded {file} using torch.load")
+                
+            except Exception as e1:
                 try:
-                    # Fallback to JIT for classification models (like your violence.pt)
-                    model = torch.jit.load(path)
-                    model.eval()
+                    # Attempt 2: YOLOv5 Hub Load
+                    model = torch.hub.load('ultralytics/yolov5', 'custom', path=path, force_reload=False)
                     loaded_models[path] = model
-                    print(f"Successfully loaded {file} as TorchScript model.")
+                    model_errors.pop(path, None)
+                    print(f"Successfully loaded {file} using YOLOv5 Hub")
                 except Exception as e2:
-                    print(f"Failed to load {file}: {e2}")
+                    try:
+                        # Attempt 3: TorchScript JIT
+                        model = torch.jit.load(path)
+                        model.eval()
+                        loaded_models[path] = model
+                        model_errors.pop(path, None)
+                        print(f"Successfully loaded {file} using JIT")
+                    except Exception as e3:
+                        model_errors[path] = f"Load failed: {str(e3)}"
+                        print(f"Failed to load {file} after all attempts.")
 
 # --- Startup Logic ---
 @app.on_event("startup")
@@ -253,6 +269,8 @@ async def list_models(token: str = Depends(verify_auth)):
     local_files = os.listdir(MODEL_DIR) if os.path.exists(MODEL_DIR) else []
     return {
         "local_models": local_files,
+        "active_models": [os.path.basename(p) for p in loaded_models.keys()],
+        "errors": {os.path.basename(p): err for p, err in model_errors.items()},
         "default_sources": DEFAULT_MODEL_URLS,
         "custom_sources": CUSTOM_MODEL_URLS.split(';') if CUSTOM_MODEL_URLS else []
     }
