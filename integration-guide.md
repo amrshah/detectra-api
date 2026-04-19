@@ -106,3 +106,38 @@ files = [
 response = requests.post(url, headers=headers, files=files)
 print(response.json())
 ```
+
+## Implementation Example (Dart / Flutter)
+
+Using the `http` package:
+
+```dart
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+
+Future<void> detectViolence(List<String> imagePaths) async {
+  var url = Uri.parse('https://detectra-api.alamiaai.com/detect-batch');
+  var request = http.MultipartRequest('POST', url);
+  
+  // Add Headers
+  request.headers.addAll({
+    'Authorization': 'Bearer YOUR_AUTH_KEY',
+  });
+
+  // Add Files
+  for (var path in imagePaths) {
+    request.files.add(await http.MultipartFile.fromPath('images', path));
+  }
+
+  // Send Request
+  var streamedResponse = await request.send();
+  var response = await http.Response.fromStream(streamedResponse);
+
+  if (response.statusCode == 200) {
+    var data = jsonDecode(response.body);
+    print('Detection Status: ${data['aggregated']['alert']}');
+  } else {
+    print('Request failed with status: ${response.statusCode}');
+  }
+}
+```
