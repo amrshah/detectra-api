@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.openapi.models import Response
+from ultralytics import YOLO
 
 security = HTTPBearer()
 
@@ -107,25 +108,22 @@ def load_all_models():
         if path not in loaded_models:
             print(f"Loading {file}...")
             try:
-                # Attempt 1: Standard Torch Load (General)
-                # We try Map Location to CPU for stability on VPS
-                model = torch.load(path, map_location=torch.device('cpu'))
-                # If it's a dict (common in YOLOv8/v5 saved weights), it's not the model itself
-                if isinstance(model, dict) and 'model' in model:
-                    model = model['model']
-                
-                model.eval()
+                # Attempt 1: YOLOv8 (Official Ultralytics) - Best for your .pt files
+                model = YOLO(path)
                 loaded_models[path] = model
                 model_errors.pop(path, None)
-                print(f"Successfully loaded {file} using torch.load")
+                print(f"Successfully loaded {file} using Ultralytics YOLOv8")
                 
             except Exception as e1:
                 try:
-                    # Attempt 2: YOLOv5 Hub Load
-                    model = torch.hub.load('ultralytics/yolov5', 'custom', path=path, force_reload=False)
+                    # Attempt 2: Standard Torch Load (General)
+                    model = torch.load(path, map_location=torch.device('cpu'))
+                    if isinstance(model, dict) and 'model' in model:
+                        model = model['model']
+                    model.eval()
                     loaded_models[path] = model
                     model_errors.pop(path, None)
-                    print(f"Successfully loaded {file} using YOLOv5 Hub")
+                    print(f"Successfully loaded {file} using torch.load")
                 except Exception as e2:
                     try:
                         # Attempt 3: TorchScript JIT
@@ -219,13 +217,33 @@ def run_ensemble_inference(img: Image.Image):
     
     for path, model in loaded_models.items():
         fname = os.path.basename(path)
-        # 1. Detect Weapons if it's a YOLO-style model
-        if hasattr(model, 'names'): 
+        
+        # 1. Detect using YOLOv8 (Ultralytics)
+        if hasattr(model, 'predictor'): 
+            try:
+                results = model(img)
+                for result in results:
+                    for box in result.boxes:
+                        conf = float(box.conf[0])
+                        cls = int(box.cls[0])
+                        label = model.names[cls]
+                        
+                        if label in ["knife", "scissors", "gun", "pistol", "firearm", "weapon", "punch", "kick"]:
+                            final_weapons.append({
+                                "type": label,
+                                "confidence": round(conf, 4),
+                                "box": [round(float(x), 2) for x in box.xyxy[0].tolist()],
+                                "source_model": fname
+                            })
+            except Exception as e:
+                print(f"Error running YOLOv8 detector {fname}: {e}")
+        
+        # 2. Detect using YOLOv5 Hub (Fallback)
+        elif hasattr(model, 'names'):
             try:
                 results = model(img)
                 for *box, conf, cls in results.xyxy[0]:
                     label = model.names[int(cls)]
-                    # Common labels for violence/weapon detection
                     if label in ["knife", "scissors", "gun", "pistol", "firearm", "weapon", "punch", "kick"]:
                         final_weapons.append({
                             "type": label,
@@ -234,19 +252,17 @@ def run_ensemble_inference(img: Image.Image):
                             "source_model": fname
                         })
             except Exception as e:
-                print(f"Error running detector {fname}: {e}")
+                print(f"Error running YOLOv5 detector {fname}: {e}")
         
-        # 2. Detect Violence if it's a classification-style model
+        # 3. Detect using Classification (JIT)
         else:
             try:
                 tensor = preprocess_for_violence(img)
                 with torch.no_grad():
                     out = model(tensor)
-                    # Support both [1] and [1, 1] output shapes
                     prob = torch.sigmoid(out).min().item() 
                     max_violence_prob = max(max_violence_prob, prob)
             except Exception as e:
-                # Some models might fail if they expect different input shapes
                 print(f"Error running classifier {fname}: {e}")
                 
     return final_weapons, max_violence_prob
