@@ -165,11 +165,30 @@ async def health():
     return {
         "status": "healthy",
         "mock_mode": MOCK_MODE,
-        "models": {
-            "yolo": "loaded" if (not MOCK_MODE and yolo_model) else ("mocked" if MOCK_MODE else "missing"),
-            "violence": "loaded" if (not MOCK_MODE and violence_model) else ("mocked" if MOCK_MODE else "missing")
+        "models_status": {
+            "directory_exists": os.path.exists(MODEL_DIR),
+            "files": os.listdir(MODEL_DIR) if os.path.exists(MODEL_DIR) else []
         }
     }
+
+@app.get("/models")
+async def list_models(token: str = Depends(verify_auth)):
+    """Lists files in the models directory and default source URLs."""
+    local_files = os.listdir(MODEL_DIR) if os.path.exists(MODEL_DIR) else []
+    return {
+        "local_models": local_files,
+        "default_sources": DEFAULT_MODEL_URLS,
+        "custom_sources": CUSTOM_MODEL_URLS.split(';') if CUSTOM_MODEL_URLS else []
+    }
+
+@app.post("/download-default-models")
+async def trigger_download(token: str = Depends(verify_auth)):
+    """Manually triggers download of default models with overwrite enabled."""
+    results = []
+    for url in DEFAULT_MODEL_URLS:
+        path = download_model(url, overwrite=True)
+        results.append({"url": url, "success": path is not None})
+    return {"status": "completed", "results": results}
 
 
 @app.post("/detect-batch")
