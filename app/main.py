@@ -158,7 +158,7 @@ async def health():
 
 @app.post("/detect-batch")
 async def detect_batch(
-    images: Annotated[List[UploadFile], File(...)], 
+    images: List[UploadFile] = File(...), 
     token: str = Depends(verify_auth)
 ):
     if len(images) > 10:
