@@ -22,6 +22,7 @@ app = FastAPI(
 # --- Configuration ---
 AUTH_KEY = os.getenv("AUTH_KEY", "default-secret-key")
 MOCK_MODE = os.getenv("MOCK_MODE", "false").lower() == "true"
+DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
 MODEL_DIR = "models"
 # New: Environment variable for semicolon-separated download links
 CUSTOM_MODEL_URLS = os.getenv("MODEL_DOWNLOAD_URLS", "")
@@ -399,7 +400,7 @@ async def detect_batch(
             shooting = has_gun and violence_prob > 0.6
             alert = shooting or violence_detected or len(weapons) > 0
             
-            batch_results.append({
+            res = {
                 "filename": file.filename,
                 "weapons": weapons,
                 "violence": {
@@ -409,10 +410,14 @@ async def detect_batch(
                 "critical_event": {
                     "shooting": shooting
                 },
-                "alert": alert,
-                "models_used": list(loaded_models.keys()),
-                "debug_raw_detections": raw_debug
-            })
+                "alert": alert
+            }
+            
+            if DEBUG_MODE:
+                res["models_used"] = list(loaded_models.keys())
+                res["debug_raw_detections"] = raw_debug
+                
+            batch_results.append(res)
             
         except Exception as e:
             batch_results.append({
