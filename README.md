@@ -11,8 +11,9 @@ Detectra API is a high-performance, lightweight backend service designed for rea
 6. [Setup & Installation](#setup--installation)
 7. [Deployment Instructions](#deployment-instructions)
 8. [API Documentation](#api-documentation)
-9. [Performance](#performance)
-10. [License](#license)
+9. [Integration Guide & WebP](#integration-guide--webp)
+10. [Performance](#performance)
+11. [License](#license)
 
 ## Key Features
 
@@ -157,6 +158,13 @@ Returns a consolidated report for each frame in the batch plus an aggregated sum
   }
 }
 ```
+
+---
+
+## Integration Guide & WebP
+For developers building client apps, please refer to the [Integration Guide](integration-guide.md). 
+
+**WebP Recommendation:** Using **WebP** images for the `detect-batch` endpoint is highly recommended to ensure smooth performance on mobile networks and lower VPS ingress bandwidth.
 
 ---
 
