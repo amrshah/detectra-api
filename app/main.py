@@ -58,12 +58,13 @@ def download_model(url: str, overwrite: bool = False):
 
     print(f"Downloading model from {url} to {local_path}...")
     try:
-        response = requests.get(url, stream=True)
+        response = requests.get(url, stream=True, allow_redirects=True, timeout=30)
         response.raise_for_status()
         with open(local_path, "wb") as f:
             for chunk in response.iter_content(chunk_size=8192):
-                f.write(chunk)
-        print(f"Successfully downloaded {filename}.")
+                if chunk: # filter out keep-alive new chunks
+                    f.write(chunk)
+        print(f"Successfully downloaded {filename} ({os.path.getsize(local_path)} bytes).")
         return local_path
     except Exception as e:
         print(f"Error downloading {url}: {e}")
