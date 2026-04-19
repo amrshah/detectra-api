@@ -145,7 +145,7 @@ def load_all_models():
 @app.on_event("startup")
 async def startup_event():
     if MOCK_MODE:
-        print("!!! RUNNING IN MOCK MODE !!! models will not be loaded.")
+        print("!!! RUNNING IN LIGHTWEIGHT MODE (2GB RAM) !!! models will not be loaded.")
         return
 
     if not os.path.exists(MODEL_DIR):
