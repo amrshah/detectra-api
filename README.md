@@ -177,10 +177,12 @@ For developers building client apps, please refer to the [Integration Guide](int
 
 ## License
 
-This project is licensed under the MIT License — you are free to use, modify, and distribute this software with proper attribution.
+This project is licensed under the MIT License for academic and personal use.
+
+### Usage Notice
+
+Commercial or production use of this system, particularly in surveillance or safety-critical environments, should be approached with caution and requires additional validation.
 
 ### Disclaimer
 
-This project is intended for educational and research purposes only. It is not designed or certified for production-grade surveillance, safety-critical, or law enforcement use.
-
-The authors are not responsible for any misuse, misinterpretation, or consequences arising from the use of this software.
+This project is provided "as is", without warranty of any kind. The authors are not liable for any claims or damages arising from its use.
