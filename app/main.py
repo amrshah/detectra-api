@@ -32,6 +32,13 @@ DEFAULT_MODEL_URLS = [
     "https://github.com/Rohit-raj-t/Violence-detection/blob/main/yolov8n.pt"
 ]
 
+MAX_MODEL_SIZE = 500 * 1024 * 1024 # 500MB
+MAX_MODELS = 6
+
+def get_default_filenames():
+    """Helper to get the filenames of the default models for preservation."""
+    return [url.split('/')[-1].split('?')[0] for url in DEFAULT_MODEL_URLS]
+
 # --- Helpers ---
 def download_model(url: str, overwrite: bool = False):
     """Downloads a model from a URL if missing or if overwrite is True."""
@@ -87,9 +94,15 @@ def load_all_models():
         if os.path.basename(path) not in current_files:
             del loaded_models[path]
 
-    # Load new models
+    # Load new models with size check
     for file in current_files:
         path = os.path.join(MODEL_DIR, file)
+        
+        # 500MB Size Check
+        if os.path.getsize(path) > MAX_MODEL_SIZE:
+            print(f"Skipping {file}: Exceeds 500MB limit.")
+            continue
+
         if path not in loaded_models:
             print(f"Loading {file}...")
             try:
@@ -257,6 +270,26 @@ async def trigger_download(token: str = Depends(verify_auth)):
 @app.post("/add-model")
 async def add_model(request: AddModelRequest, token: str = Depends(verify_auth)):
     """Downloads a new model from a URL and loads it into the ensemble."""
+    # 1. Pre-check size if Content-Length is available
+    try:
+        head = requests.head(request.url, allow_redirects=True)
+        if int(head.headers.get('Content-Length', 0)) > MAX_MODEL_SIZE:
+            raise HTTPException(status_code=400, detail="Model file exceeds 500MB limit.")
+    except Exception:
+        pass # Better to try download if HEAD fails
+    
+    # 2. Enforce MAX_MODELS limit (excluding defaults)
+    files = [f for f in os.listdir(MODEL_DIR) if f.endswith('.pt')]
+    if len(files) >= MAX_MODELS:
+        defaults = get_default_filenames()
+        # Find erasable models (non-defaults)
+        erasable = [f for f in files if f not in defaults]
+        if erasable:
+            # Delete the oldest one
+            erasable.sort(key=lambda x: os.path.getctime(os.path.join(MODEL_DIR, x)))
+            os.remove(os.path.join(MODEL_DIR, erasable[0]))
+            print(f"Deleted old model {erasable[0]} to stay within {MAX_MODELS} limit.")
+
     path = download_model(request.url, overwrite=request.overwrite)
     if not path:
         raise HTTPException(status_code=400, detail="Failed to download model")
